@@ -221,7 +221,7 @@
 
   /* the response: one markdown block the agent can apply without guessing */
   function buildResponse(verdict) {
-    const L = [`# Re: ${title}`, "", `Verdict: **${verdict}**`, ""];
+    const L = verdict ? [`# Re: ${title}`, "", `Verdict: **${verdict}**`, ""] : [`# Re: ${title}`, ""];
     if (asks.length) {
       L.push("## Decisions");
       asks.forEach((a, k) => {
@@ -255,7 +255,9 @@
     const left = asks.filter(todo);
     const wrong = Object.values(S.guesses).filter((v) => v === "wrong").length;
     const auto = asks.some(changed) || S.comments.length || wrong ? "Request changes" : "Approve";
-    let verdict = force || auto;
+    // HUB FORK: a verdict only while a decision is still unanswered
+    const open = asks.some(todo);
+    let verdict = open ? (force || auto) : null;
     const md = h("pre", { class: "r-md" });
     const warn = h("p", { class: "r-warn" });
     const update = () => {
@@ -263,7 +265,7 @@
       warn.textContent = verdict === "Approve" && left.length ? `▲ ${left.length} decision${left.length === 1 ? " was" : "s were"} never opened. Approving keeps the default${left.length === 1 ? "" : "s"}.` : "";
       warn.hidden = !warn.textContent;
     };
-    const verdicts = h("fieldset", { class: "verdict" }, ...["Approve", "Request changes", "Comment"].map((v) =>
+    const verdicts = h("fieldset", { class: "verdict", hidden: !open }, ...["Approve", "Request changes", "Comment"].map((v) =>
       h("label", {}, h("input", { type: "radio", name: "ve-verdict", value: v, checked: v === verdict, onchange: () => { verdict = v; update(); } }), v)));
     const row = (k, main, sub, cls, st, onclick) => h("button", { type: "button", class: `r-row ${cls}`, onclick }, h("span", { class: "k" }, k), h("span", {}, main, h("small", {}, sub)), h("span", { class: "st" }, st));
     const decisions = asks.length ? h("section", { class: "r-sec" }, h("p", { class: "ve-label caps" }, receipt ? "Decisions · settled before the build" : left.length ? `Decisions · ${left.length} to answer` : "Decisions · all opened"),

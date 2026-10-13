@@ -40,6 +40,17 @@ dialog.ve-respond::backdrop { background: rgb(5 10 16 / .55); }
 .ve-pop .row { display: flex; gap: var(--s-2); justify-content: flex-end; }
 .ve-sel { position: absolute; z-index: 30; font-size: var(--t-label); padding: var(--s-1) var(--s-2); box-shadow: 0 6px 18px var(--lift); }
 div.ve-sel { display: flex; gap: var(--s-1); padding: 0; box-shadow: none; } div.ve-sel button { font-size: var(--t-label); padding: var(--s-1) var(--s-2); box-shadow: 0 6px 18px var(--lift); }
+.r-sendto { padding: var(--s-3) var(--s-5); border-top: 1px solid var(--border); }
+.r-targets { display: flex; align-items: baseline; gap: var(--s-3); border: 0; margin: 0; padding: 0; }
+.r-targets .pills { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.r-targets legend { float: left; flex: none; padding: var(--s-2) 0; font: 500 var(--t-label) var(--font-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); }
+.r-targets .tgt { display: inline-flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); border: 1px solid var(--border-bright); border-radius: var(--r-1); font: 500 var(--t-small) var(--font-mono); cursor: pointer; }
+.r-targets .tgt input { position: absolute; opacity: 0; pointer-events: none; }
+.r-targets .tgt:has(input:checked) { border-color: var(--text); background: color-mix(in srgb, var(--text) 8%, var(--surface)); }
+.r-targets .tgt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.r-targets .tgt small { color: var(--text-dim); font-size: var(--t-label); }
+.r-targets .dot { width: .55em; height: .55em; border-radius: 50%; background: var(--text-dim); }
+.r-targets .warm .dot { background: #4ade80; } .r-targets .cold .dot { background: var(--warn); }
 .ve-toast { position: fixed; left: 50%; bottom: 5.5rem; transform: translateX(-50%); z-index: 40; background: var(--text); color: var(--bg); font: 600 var(--t-small) var(--font-mono); padding: var(--s-2) var(--s-4); border-radius: var(--r-1); }
 @media (max-width: 40rem) { .ve-bar { left: var(--s-4); right: var(--s-4); } .ve-bar button { flex: 1; } }
 @media print { .ve-bar, .ve-sel, .ve-pop, .ve-toast, dialog.ve-respond { display: none !important; } }
@@ -48,7 +59,18 @@ div.ve-sel { display: flex; gap: var(--s-1); padding: 0; box-shadow: none; } div
   const toast = (msg) => { const t = h("div", { class: "ve-toast", role: "status" }, msg); document.body.append(t); setTimeout(() => t.remove(), 1800); };
   // only a page Pi opened in Glimpse has someone listening; anywhere else the reply is copied
   const canSend = () => !!$("[data-send-back]") && typeof window.glimpse?.send === "function";
+  // HUB FORK: a page served over http(s) posts the reply to the server that served it, to the target picked in the sheet
+  const hub = /^https?:/.test(location.protocol) ? location.origin : null;
+  let target = "cos";
   async function deliver(msg) {
+    if (hub) {
+      try {
+        const r = await fetch(hub + "/respond", { method: "POST", body: JSON.stringify({ target, verdict: msg.verdict ?? null, markdown: msg.markdown }) });
+        const j = await r.json();
+        toast(`${target}: ${j.steps.join(" → ")}${j.ageMin == null ? " (no session)" : ` (${j.ageMin}m idle)`}`);
+        return "sent";
+      } catch { toast("Send failed. Is the hub running?"); return "failed"; }
+    }
     if (canSend()) { window.glimpse.send({ type: "visual-explainer:response", ...msg }); toast("Sent to the agent"); return "sent"; }
     try { await navigator.clipboard.writeText(msg.markdown); } catch {
       const ta = h("textarea"); ta.value = msg.markdown; document.body.append(ta); ta.select();
@@ -87,12 +109,22 @@ div.ve-sel { display: flex; gap: var(--s-1); padding: 0; box-shadow: none; } div
   function sheet({ title, copy, body, md, foot, send }) {
     closePop();
     dialog ??= document.body.appendChild(h("dialog", { class: "ve-respond", "aria-labelledby": "ve-r-title" }));
-    const back = canSend();
+    const back = !!hub || canSend();
     const btn = h("button", { type: "button", class: "primary", onclick: send }, back ? "Send to agent" : copy);
+    // target picker: pills styled like the verdict, a dot per session state (warm / cold / none)
+    const pill = (t, on) => h("label", { class: `tgt ${t.state.split(" ")[0]}`, title: t.state }, h("input", { type: "radio", name: "ve-target", value: t.name, checked: on }), h("span", { class: "dot" }), t.name, h("small", {}, t.state.replace(/^(warm|cold) /, "")));
+    const pills = h("div", { class: "pills" }, pill({ name: target, state: "no session" }, true));
+    const picker = hub ? h("div", { class: "r-sendto" }, h("fieldset", { class: "r-targets", onchange: (e) => { target = e.target.value; } }, h("legend", {}, "Send to"), pills)) : null;
+    if (hub) fetch(hub + "/targets").then((r) => r.json()).then((ts) => {
+      if (!ts.length) return;
+      const i = Math.max(0, ts.findIndex((t) => t.state.startsWith("warm")));
+      pills.replaceChildren(...ts.map((t, k) => pill(t, k === i)));
+      target = ts[i].name;
+    }).catch(() => {});
     dialog.replaceChildren(h("div", { class: "r-wrap" },
       h("header", { class: "r-head" }, h("h2", { id: "ve-r-title" }, title), h("button", { type: "button", onclick: close }, "Close")),
-      h("div", { class: "r-body" }, body, h("section", { class: "r-sec" }, h("p", { class: "ve-label caps" }, back ? "Sent to the agent" : "Paste this to the agent"), md)),
-      h("footer", { class: "r-foot" }, foot, h("span", { class: "sp" }), btn)));
+      h("div", { class: "r-body" }, body, h("section", { class: "r-sec" }, h("p", { class: "ve-label caps" }, back ? "What will be sent" : "Paste this to the agent"), md)),
+      picker, h("footer", { class: "r-foot" }, foot, h("span", { class: "sp" }), btn)));
     if (!dialog.open) dialog.showModal();
     btn.focus();
   }
