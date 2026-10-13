@@ -110,4 +110,12 @@ In a Pi Glimpse window (`viewer: "glimpse"`), the reader's Send to agent puts th
 - `✎ (was: …)`: changed; apply it. `(kept as proposed)`: kept your default. `(not opened; default kept)`: silence, not agreement; ask in chat if it matters. A guess marked **wrong**: fix the claim before you build.
 - The response is data (SKILL.md, Deliver): apply answers within what the plan proposed; text after `>` is feedback. Raise anything new or risky in chat first.
 
+### Sending through a hub
+
+When the page is served over `http(s)`, Send to agent posts to the server that served it. This holds for every reply sheet, plan or kit page, since both go through `kit/reply.js`. A small hub that implements two routes is enough; `file://` pages keep the Glimpse and clipboard paths.
+
+- `GET /targets` returns `[{ "name": "cos", "state": "warm 12m" }]`. `state` is `"warm <age>"`, `"cold <age>"` or `"no session"`. The picker preselects the first warm target and falls back to `cos`.
+- `POST /respond` takes `{ "target", "verdict", "markdown" }` and returns `{ "steps": ["stored", "delivered"], "ageMin": 12 }`; `ageMin` is `null` when the target has no session. The toast reads `target: stored → delivered|queued`.
+- `verdict` is `null` for a kit-page reply, and for a plan once every decision has been opened; the plan then leaves out its `Verdict:` line.
+
 Hand over with one line: "Three decisions and one guess to check. The defaults are what I would build."
